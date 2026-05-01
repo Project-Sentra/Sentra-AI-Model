@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'service/**'
+      - 'models/**'
+      - 'export_onnx.py'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +41,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Generate ONNX Models
+        run: |
+          pip install ultralytics onnx onnxslim onnxruntime
+          python ../export_onnx.py
+
       - name: Run tests
         run: pytest -k "not test_health" -v
 
@@ -50,6 +57,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate ONNX Models before Build
+        run: |
+          pip install ultralytics onnx onnxslim onnxruntime
+          python export_onnx.py
 
       - name: Set image tag
         id: set-tag
