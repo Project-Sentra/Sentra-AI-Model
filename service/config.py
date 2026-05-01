@@ -32,9 +32,19 @@ class Settings:
         str(SAMPLE_VIDEOS_DIR / "sample_video.mp4")
     )
 
-    # Model paths
-    YOLO_MODEL: str = str(MODELS_DIR / "yolov8n.pt")
-    PLATE_DETECTOR_MODEL: str = str(MODELS_DIR / "license_plate_detector.pt")
+    # Model paths — prefer quantized ONNX models, fall back to .pt for dev
+    YOLO_MODEL: str = str(
+        MODELS_DIR / "yolov8n.onnx"
+        if (MODELS_DIR / "yolov8n.onnx").exists()
+        else SERVICE_DIR / "yolov8n.onnx"
+        if (SERVICE_DIR / "yolov8n.onnx").exists()
+        else SERVICE_DIR / "yolov8n.pt"
+    )
+    PLATE_DETECTOR_MODEL: str = str(
+        MODELS_DIR / "license_plate_detector.onnx"
+        if (MODELS_DIR / "license_plate_detector.onnx").exists()
+        else MODELS_DIR / "license_plate_detector.pt"
+    )
 
     # Parking backend API
     PARKING_API_URL: str = os.getenv("PARKING_API_URL", "http://127.0.0.1:5000")
