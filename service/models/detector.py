@@ -318,3 +318,5 @@ def detect_plate_in_frame(frame: np.ndarray, min_confidence: float = 0.6) -> Det
     )
 
     return result
+
+# Note: Adaptive thresholding evaluated on vehicle crops
