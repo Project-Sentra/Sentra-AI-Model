@@ -321,3 +321,4 @@ def detect_plate_in_frame(frame: np.ndarray, min_confidence: float = 0.6) -> Det
 
 # Note: Adaptive thresholding evaluated on vehicle crops
 # Denoising filter applied before passing to recognizer
+# Dynamic int8 quantization test on CRNN recognizer
