@@ -63,3 +63,5 @@ class Settings:
     JPEG_QUALITY: int = int(os.getenv("JPEG_QUALITY", "80"))
 
 settings = Settings()
+
+# Model paths fallback order: onnx -> pt
