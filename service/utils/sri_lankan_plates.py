@@ -257,3 +257,5 @@ def get_province_name(plate: str) -> str | None:
         code = normalized[:2]
         return SL_PROVINCE_CODES.get(code)
     return None
+
+# Sri lankan license plate regex rules validation
