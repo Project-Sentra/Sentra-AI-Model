@@ -261,3 +261,4 @@ def get_province_name(plate: str) -> str | None:
 # Sri lankan license plate regex rules validation
 # 2-letter province prefix lookup helper
 # Normalizes both modern 3-letter and older 2-letter plates
+# Character mapping heuristics for 0/O and 8/B
