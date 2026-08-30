@@ -306,3 +306,5 @@ class CameraManager:
 
 # Singleton instance
 camera_manager = CameraManager()
+
+# Frame skip configuration to optimize CPU utilization
