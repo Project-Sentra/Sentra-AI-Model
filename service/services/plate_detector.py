@@ -123,3 +123,5 @@ class PlateDetectorService:
 
 # Singleton instance
 plate_detector_service = PlateDetectorService()
+
+# Deduplication cooldown period prevents double billing
