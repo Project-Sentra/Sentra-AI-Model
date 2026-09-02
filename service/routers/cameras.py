@@ -306,3 +306,5 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
+
+# Status and active stream tracking
