@@ -307,6 +307,3 @@ class CameraManager:
 # Singleton instance
 camera_manager = CameraManager()
 
-# Frame skip configuration to optimize CPU utilization
-# Ensure graceful handling of disconnected ws consumers
-# Tested simulated multi-vehicle sequences

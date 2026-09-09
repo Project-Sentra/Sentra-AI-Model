@@ -64,5 +64,3 @@ class Settings:
 
 settings = Settings()
 
-# Model paths fallback order: onnx -> pt
-# Tested 0.4 confidence threshold for real-world plates
