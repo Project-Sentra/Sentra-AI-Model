@@ -9,11 +9,24 @@ import time
 from typing import Optional, Callable, Any
 from dataclasses import dataclass, field
 from enum import Enum
+from urllib.parse import urlsplit, urlunsplit
 import numpy as np
 
 from config import settings
 from services.plate_detector import plate_detector_service, DetectionEvent
 from services.parking_client import parking_client
+
+
+def mask_source(source: str) -> str:
+    """Hide credentials in camera URLs, e.g. rtsp://admin:pw@host → rtsp://***@host."""
+    try:
+        parts = urlsplit(source)
+    except ValueError:
+        return source
+    if parts.scheme and "@" in parts.netloc:
+        host = parts.netloc.rsplit("@", 1)[1]
+        return urlunsplit(parts._replace(netloc=f"***@{host}"))
+    return source
 
 
 class CameraType(Enum):
@@ -148,7 +161,7 @@ class CameraManager:
                 "name": cam.name,
                 "type": cam.camera_type.value,
                 "status": cam.status.value,
-                "source": cam.source,
+                "source": mask_source(cam.source),
                 "frame_count": cam.frame_count,
                 "error": cam.error_message
             }

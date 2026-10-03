@@ -48,6 +48,10 @@ class Settings:
 
     # Parking backend API
     PARKING_API_URL: str = os.getenv("PARKING_API_URL", "http://127.0.0.1:5000")
+    # Shared secret sent as X-Service-Key; must match the backend's SERVICE_API_KEY
+    SERVICE_API_KEY: str = os.getenv("SERVICE_API_KEY", "")
+    # Facility this camera installation belongs to (used for entry calls)
+    FACILITY_ID: int = int(os.getenv("FACILITY_ID", "1"))
 
     # Detection settings
     MIN_CONFIDENCE: float = float(os.getenv("MIN_CONFIDENCE", "0.6"))
