@@ -1,6 +1,9 @@
 """
 SentraAI Service - FastAPI Entry Point
 License Plate Recognition Microservice
+
+In simulated mode (CAMERA_MODE=simulated) cameras stay idle until an
+operator picks a video from sample_videos/ in the admin Live Feed panel.
 """
 
 import asyncio
