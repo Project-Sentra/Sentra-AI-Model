@@ -1,0 +1,85 @@
+name: Deploy AI Service to GCP
+
+# Runs after "AI Service CI" succeeds on main (or manually). Connects to the
+# GCP VM over SSH, updates Sentra-AI-Model to the tested commit and rebuilds
+# the ai-service container. The VM itself is created by Terraform and
+# configured by Ansible (Sentra-Infrastructure); this only ships new code.
+#
+# Repository secrets:
+#   GCP_HOST         VM external IP (terraform output external_ip)
+#   GCP_SSH_KEY      private key of the CI deploy key (no passphrase)
+#   GCP_KNOWN_HOSTS  output of: ssh-keyscan -t ed25519 <GCP_HOST>
+# Without them the deploy is skipped, so forks and new clones stay green.
+
+on:
+  workflow_run:
+    workflows: ["AI Service CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gcp-ai
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy AI service
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    env:
+      GCP_HOST: ${{ secrets.GCP_HOST }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check deploy secrets
+        id: secrets
+        run: |
+          if [ -z "$GCP_HOST" ]; then
+            echo "::notice::GCP deploy secrets are not set; skipping deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up SSH
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.GCP_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Update code and rebuild containers
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "sentra@$GCP_HOST" \
+            "DEPLOY_SHA=$DEPLOY_SHA bash -s" <<'EOF'
+          set -euo pipefail
+          cd /opt/sentra/src/Sentra-AI-Model
+          git fetch --quiet origin main
+          git checkout --quiet -B main "$DEPLOY_SHA"
+          echo "Deploying Sentra-AI-Model $(git log -1 --format='%h %s')"
+          cd /opt/sentra
+          docker compose up -d --build ai-service
+          docker image prune -f > /dev/null
+          EOF
+
+      - name: Smoke test
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          url="https://${GCP_HOST}.sslip.io"
+          for _ in $(seq 1 60); do
+            if curl -fsS "$url/ai/health" > /dev/null; then
+              echo "SentraAI is healthy at $url"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Health check failed for $url"
+          exit 1
