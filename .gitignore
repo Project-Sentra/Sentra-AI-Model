@@ -15,6 +15,8 @@ venv/
 *.mp4
 *.avi
 *.mov
+# ...except the simulation videos picked in the Live Feed panel
+!sample_videos/*
 
 # OS files
 .DS_Store
