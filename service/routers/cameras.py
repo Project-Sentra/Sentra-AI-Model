@@ -1,17 +1,23 @@
 """
 Camera Router
-Handles camera management and WebSocket streaminggg
+Handles camera management and WebSocket streaming.
+
+All endpoints require an admin/operator login (Bearer token for HTTP,
+?token= query parameter for the WebSocket), because they control cameras
+and can open gates via the backend.
 """
-import asyncio
-import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from services.camera_manager import camera_manager, FrameUpdate
+from services.camera_manager import camera_manager, FrameUpdate, mask_source
 from services.plate_detector import DetectionEvent
 from services.parking_client import parking_client
-from config import settings
+from services.operator_auth import (
+    require_operator,
+    verify_operator_token,
+    websocket_operator_token,
+)
 
 
 router = APIRouter()
@@ -43,14 +49,14 @@ class ActionResponse(BaseModel):
     amount_charged: Optional[int] = None
 
 
-@router.get("/cameras")
+@router.get("/cameras", dependencies=[Depends(require_operator)])
 async def list_cameras() -> list[CameraResponse]:
     """Get list of all configured cameras"""
     cameras = camera_manager.get_cameras()
     return [CameraResponse(**cam) for cam in cameras]
 
 
-@router.get("/cameras/{camera_id}")
+@router.get("/cameras/{camera_id}", dependencies=[Depends(require_operator)])
 async def get_camera(camera_id: str) -> CameraResponse:
     """Get details of a specific camera"""
     camera = camera_manager.get_camera(camera_id)
@@ -62,13 +68,13 @@ async def get_camera(camera_id: str) -> CameraResponse:
         name=camera.name,
         type=camera.camera_type.value,
         status=camera.status.value,
-        source=camera.source,
+        source=mask_source(camera.source),
         frame_count=camera.frame_count,
         error=camera.error_message
     )
 
 
-@router.post("/cameras/{camera_id}/start")
+@router.post("/cameras/{camera_id}/start", dependencies=[Depends(require_operator)])
 async def start_camera(camera_id: str):
     """Start streaming from a camera"""
     camera = camera_manager.get_camera(camera_id)
@@ -83,7 +89,7 @@ async def start_camera(camera_id: str):
         raise HTTPException(500, f"Failed to start camera {camera_id}")
 
 
-@router.post("/cameras/{camera_id}/stop")
+@router.post("/cameras/{camera_id}/stop", dependencies=[Depends(require_operator)])
 async def stop_camera(camera_id: str):
     """Stop streaming from a camera"""
     success = await camera_manager.stop_camera(camera_id)
@@ -94,7 +100,7 @@ async def stop_camera(camera_id: str):
         raise HTTPException(404, f"Camera {camera_id} not found or not running")
 
 
-@router.post("/cameras/start-all")
+@router.post("/cameras/start-all", dependencies=[Depends(require_operator)])
 async def start_all_cameras():
     """Start all configured cameras"""
     cameras = camera_manager.get_cameras()
@@ -110,7 +116,7 @@ async def start_all_cameras():
     }
 
 
-@router.post("/cameras/stop-all")
+@router.post("/cameras/stop-all", dependencies=[Depends(require_operator)])
 async def stop_all_cameras():
     """Stop all running cameras"""
     cameras = camera_manager.get_cameras()
@@ -127,9 +133,9 @@ async def stop_all_cameras():
 
 
 @router.post("/entry", response_model=ActionResponse)
-async def confirm_entry(request: ActionRequest):
+async def confirm_entry(request: ActionRequest, token: str = Depends(require_operator)):
     """Confirm vehicle entry (manual confirmation mode)"""
-    result = await parking_client.vehicle_entry(request.plate_number)
+    result = await parking_client.vehicle_entry(request.plate_number, operator_token=token)
 
     return ActionResponse(
         success=result.success,
@@ -139,9 +145,9 @@ async def confirm_entry(request: ActionRequest):
 
 
 @router.post("/exit", response_model=ActionResponse)
-async def confirm_exit(request: ActionRequest):
+async def confirm_exit(request: ActionRequest, token: str = Depends(require_operator)):
     """Confirm vehicle exit (manual confirmation mode)"""
-    result = await parking_client.vehicle_exit(request.plate_number)
+    result = await parking_client.vehicle_exit(request.plate_number, operator_token=token)
 
     return ActionResponse(
         success=result.success,
@@ -234,7 +240,16 @@ async def websocket_endpoint(websocket: WebSocket):
     - {"action": "stop_camera", "camera_id": "..."}
     - {"action": "confirm_entry", "plate_number": "...", "camera_id": "..."}
     - {"action": "confirm_exit", "plate_number": "...", "camera_id": "..."}
+
+    Requires ?token=<operator JWT>. Unauthenticated connections are rejected
+    before the handshake completes; the token is re-checked before every
+    command so an expired/revoked login stops working mid-session.
     """
+    token = await websocket_operator_token(websocket)
+    if not token:
+        await websocket.close(code=4401)  # rejected before accept → HTTP 403
+        return
+
     await ws_manager.connect(websocket)
 
     try:
@@ -249,6 +264,15 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             action = data.get("action")
+
+            if not await verify_operator_token(token):
+                await websocket.send_json({
+                    "type": "auth_error",
+                    "message": "Session expired. Please sign in again."
+                })
+                await websocket.close(code=4401)
+                ws_manager.disconnect(websocket)
+                return
 
             if action == "start_camera":
                 camera_id = data.get("camera_id")
@@ -271,7 +295,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action == "confirm_entry":
                 plate_number = data.get("plate_number")
                 camera_id = data.get("camera_id")
-                result = await parking_client.vehicle_entry(plate_number)
+                result = await parking_client.vehicle_entry(plate_number, operator_token=token)
                 await websocket.send_json({
                     "type": "entry_result",
                     "success": result.success,
@@ -283,7 +307,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action == "confirm_exit":
                 plate_number = data.get("plate_number")
                 camera_id = data.get("camera_id")
-                result = await parking_client.vehicle_exit(plate_number)
+                result = await parking_client.vehicle_exit(plate_number, operator_token=token)
                 await websocket.send_json({
                     "type": "exit_result",
                     "success": result.success,

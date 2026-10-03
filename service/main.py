@@ -3,6 +3,7 @@ SentraAI Service - FastAPI Entry Point
 License Plate Recognition Microservice
 """
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,11 +41,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware.
+# Auth uses Bearer tokens (not cookies), so credentials are not needed;
+# allow_origins="*" together with allow_credentials=True is invalid per the CORS spec.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -76,7 +79,7 @@ async def root():
             "health": "/api/health",
             "detect": "/api/detect/image",
             "cameras": "/api/cameras",
-            "websocket": "/ws"
+            "websocket": "/api/ws"
         }
     }
 

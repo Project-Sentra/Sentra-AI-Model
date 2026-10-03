@@ -5,15 +5,17 @@ Handles image-based plate detection requests
 import cv2
 import numpy as np
 import base64
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
 from models.detector import detect_plate_in_frame
 from config import settings
+from services.operator_auth import require_operator
 
 
-router = APIRouter()
+# Detection is CPU-heavy, so it is restricted to logged-in operators
+router = APIRouter(dependencies=[Depends(require_operator)])
 
 
 class DetectionResponse(BaseModel):
