@@ -2,6 +2,7 @@
 Parking System API Client
 Communicates with the LPR Parking System backend
 """
+
 import httpx
 from typing import Optional
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from config import settings
 @dataclass
 class EntryResult:
     """Result of a vehicle entry request"""
+
     success: bool
     message: str
     spot_name: Optional[str] = None
@@ -21,6 +23,7 @@ class EntryResult:
 @dataclass
 class ExitResult:
     """Result of a vehicle exit request"""
+
     success: bool
     message: str
     duration_minutes: Optional[int] = None
@@ -41,7 +44,9 @@ class ParkingClient:
             if settings.SERVICE_API_KEY:
                 headers["X-Service-Key"] = settings.SERVICE_API_KEY
             else:
-                print("[WARN] SERVICE_API_KEY is not set; backend entry/exit calls will be rejected.")
+                print(
+                    "[WARN] SERVICE_API_KEY is not set; backend entry/exit calls will be rejected."
+                )
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=10.0,
@@ -118,24 +123,17 @@ class ParkingClient:
                     success=True,
                     message=data.get("message", "Entry successful"),
                     spot_name=data.get("spot"),
-                    status=data.get("status")
+                    status=data.get("status"),
                 )
             else:
                 return EntryResult(
-                    success=False,
-                    message=data.get("message", "Entry failed")
+                    success=False, message=data.get("message", "Entry failed")
                 )
 
         except httpx.RequestError as e:
-            return EntryResult(
-                success=False,
-                message=f"Connection error: {str(e)}"
-            )
+            return EntryResult(success=False, message=f"Connection error: {str(e)}")
         except Exception as e:
-            return EntryResult(
-                success=False,
-                message=f"Error: {str(e)}"
-            )
+            return EntryResult(success=False, message=f"Error: {str(e)}")
 
     async def vehicle_exit(
         self, plate_number: str, operator_token: Optional[str] = None
@@ -166,24 +164,17 @@ class ParkingClient:
                     message=data.get("message", "Exit successful"),
                     duration_minutes=data.get("duration_minutes"),
                     # Backend returns the fee as "amount"
-                    amount_charged=data.get("amount")
+                    amount_charged=data.get("amount"),
                 )
             else:
                 return ExitResult(
-                    success=False,
-                    message=data.get("message", "Exit failed")
+                    success=False, message=data.get("message", "Exit failed")
                 )
 
         except httpx.RequestError as e:
-            return ExitResult(
-                success=False,
-                message=f"Connection error: {str(e)}"
-            )
+            return ExitResult(success=False, message=f"Connection error: {str(e)}")
         except Exception as e:
-            return ExitResult(
-                success=False,
-                message=f"Error: {str(e)}"
-            )
+            return ExitResult(success=False, message=f"Error: {str(e)}")
 
     async def get_spots(self) -> list[dict]:
         """Get all parking spots"""

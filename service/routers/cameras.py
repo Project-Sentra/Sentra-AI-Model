@@ -6,6 +6,7 @@ All endpoints require an admin/operator login (Bearer token for HTTP,
 ?token= query parameter for the WebSocket), because they control cameras
 and can open gates via the backend.
 """
+
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -20,12 +21,12 @@ from services.operator_auth import (
     websocket_operator_token,
 )
 
-
 router = APIRouter()
 
 
 class CameraResponse(BaseModel):
     """Response model for camera info"""
+
     id: str
     name: str
     type: str
@@ -37,12 +38,14 @@ class CameraResponse(BaseModel):
 
 class ActionRequest(BaseModel):
     """Request model for entry/exit actions"""
+
     plate_number: str
     camera_id: str
 
 
 class ActionResponse(BaseModel):
     """Response model for entry/exit actions"""
+
     success: bool
     message: str
     spot_name: Optional[str] = None
@@ -71,7 +74,7 @@ async def get_camera(camera_id: str) -> CameraResponse:
         status=camera.status.value,
         source=mask_source(camera.source),
         frame_count=camera.frame_count,
-        error=camera.error_message
+        error=camera.error_message,
     )
 
 
@@ -87,7 +90,9 @@ async def start_camera(camera_id: str, video: Optional[str] = None):
     if success:
         return {"message": f"Camera {camera_id} started", "status": "running"}
     else:
-        raise HTTPException(400, camera.error_message or f"Failed to start camera {camera_id}")
+        raise HTTPException(
+            400, camera.error_message or f"Failed to start camera {camera_id}"
+        )
 
 
 @router.post("/cameras/{camera_id}/stop", dependencies=[Depends(require_operator)])
@@ -105,7 +110,9 @@ async def stop_camera(camera_id: str):
 async def start_all_cameras():
     """Start all configured cameras"""
     if settings.CAMERA_MODE == "simulated":
-        raise HTTPException(400, "Start All is disabled in simulation mode; pick a video per camera")
+        raise HTTPException(
+            400, "Start All is disabled in simulation mode; pick a video per camera"
+        )
     cameras = camera_manager.get_cameras()
     started = []
 
@@ -113,10 +120,7 @@ async def start_all_cameras():
         if await camera_manager.start_camera(cam["id"]):
             started.append(cam["id"])
 
-    return {
-        "message": f"Started {len(started)} cameras",
-        "cameras": started
-    }
+    return {"message": f"Started {len(started)} cameras", "cameras": started}
 
 
 @router.post("/cameras/stop-all", dependencies=[Depends(require_operator)])
@@ -129,34 +133,33 @@ async def stop_all_cameras():
         if await camera_manager.stop_camera(cam["id"]):
             stopped.append(cam["id"])
 
-    return {
-        "message": f"Stopped {len(stopped)} cameras",
-        "cameras": stopped
-    }
+    return {"message": f"Stopped {len(stopped)} cameras", "cameras": stopped}
 
 
 @router.post("/entry", response_model=ActionResponse)
 async def confirm_entry(request: ActionRequest, token: str = Depends(require_operator)):
     """Confirm vehicle entry (manual confirmation mode)"""
-    result = await parking_client.vehicle_entry(request.plate_number, operator_token=token)
+    result = await parking_client.vehicle_entry(
+        request.plate_number, operator_token=token
+    )
 
     return ActionResponse(
-        success=result.success,
-        message=result.message,
-        spot_name=result.spot_name
+        success=result.success, message=result.message, spot_name=result.spot_name
     )
 
 
 @router.post("/exit", response_model=ActionResponse)
 async def confirm_exit(request: ActionRequest, token: str = Depends(require_operator)):
     """Confirm vehicle exit (manual confirmation mode)"""
-    result = await parking_client.vehicle_exit(request.plate_number, operator_token=token)
+    result = await parking_client.vehicle_exit(
+        request.plate_number, operator_token=token
+    )
 
     return ActionResponse(
         success=result.success,
         message=result.message,
         duration_minutes=result.duration_minutes,
-        amount_charged=result.amount_charged
+        amount_charged=result.amount_charged,
     )
 
 
@@ -200,7 +203,7 @@ async def broadcast_frame(update: FrameUpdate):
         "camera_id": update.camera_id,
         "frame": update.frame_base64,
         "timestamp": update.timestamp,
-        "detection": update.detection
+        "detection": update.detection,
     }
     await ws_manager.broadcast(message)
 
@@ -217,18 +220,16 @@ async def broadcast_detection(event: DetectionEvent, _):
         "timestamp": event.timestamp,
         "plate_bbox": event.plate_bbox,
         "vehicle_bbox": event.vehicle_bbox,
-        "vehicle_class": event.vehicle_class
+        "vehicle_class": event.vehicle_class,
     }
     await ws_manager.broadcast(message)
 
 
 # Status callback: tells every client a camera stopped (e.g. simulated video finished)
 async def broadcast_status(camera: Camera):
-    await ws_manager.broadcast({
-        "type": "camera_status",
-        "camera_id": camera.id,
-        "status": camera.status.value
-    })
+    await ws_manager.broadcast(
+        {"type": "camera_status", "camera_id": camera.id, "status": camera.status.value}
+    )
 
 
 # Register callbacks
@@ -268,12 +269,14 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Send initial camera list
         cameras = camera_manager.get_cameras()
-        await websocket.send_json({
-            "type": "cameras_list",
-            "cameras": cameras,
-            "mode": settings.CAMERA_MODE,
-            "videos": camera_manager.list_videos()
-        })
+        await websocket.send_json(
+            {
+                "type": "cameras_list",
+                "cameras": cameras,
+                "mode": settings.CAMERA_MODE,
+                "videos": camera_manager.list_videos(),
+            }
+        )
 
         # Listen for commands
         while True:
@@ -281,74 +284,89 @@ async def websocket_endpoint(websocket: WebSocket):
             action = data.get("action")
 
             if not await verify_operator_token(token):
-                await websocket.send_json({
-                    "type": "auth_error",
-                    "message": "Session expired. Please sign in again."
-                })
+                await websocket.send_json(
+                    {
+                        "type": "auth_error",
+                        "message": "Session expired. Please sign in again.",
+                    }
+                )
                 await websocket.close(code=4401)
                 ws_manager.disconnect(websocket)
                 return
 
             if action == "start_camera":
                 camera_id = data.get("camera_id")
-                success = await camera_manager.start_camera(camera_id, data.get("video"))
-                await websocket.send_json({
-                    "type": "camera_status",
-                    "camera_id": camera_id,
-                    "status": "running" if success else "error"
-                })
+                success = await camera_manager.start_camera(
+                    camera_id, data.get("video")
+                )
+                await websocket.send_json(
+                    {
+                        "type": "camera_status",
+                        "camera_id": camera_id,
+                        "status": "running" if success else "error",
+                    }
+                )
 
             elif action == "stop_camera":
                 camera_id = data.get("camera_id")
                 success = await camera_manager.stop_camera(camera_id)
-                await websocket.send_json({
-                    "type": "camera_status",
-                    "camera_id": camera_id,
-                    "status": "stopped" if success else "error"
-                })
+                await websocket.send_json(
+                    {
+                        "type": "camera_status",
+                        "camera_id": camera_id,
+                        "status": "stopped" if success else "error",
+                    }
+                )
 
             elif action == "confirm_entry":
                 plate_number = data.get("plate_number")
                 camera_id = data.get("camera_id")
-                result = await parking_client.vehicle_entry(plate_number, operator_token=token)
-                await websocket.send_json({
-                    "type": "entry_result",
-                    "success": result.success,
-                    "message": result.message,
-                    "spot_name": result.spot_name,
-                    "plate_number": plate_number
-                })
+                result = await parking_client.vehicle_entry(
+                    plate_number, operator_token=token
+                )
+                await websocket.send_json(
+                    {
+                        "type": "entry_result",
+                        "success": result.success,
+                        "message": result.message,
+                        "spot_name": result.spot_name,
+                        "plate_number": plate_number,
+                    }
+                )
 
             elif action == "confirm_exit":
                 plate_number = data.get("plate_number")
                 camera_id = data.get("camera_id")
-                result = await parking_client.vehicle_exit(plate_number, operator_token=token)
-                await websocket.send_json({
-                    "type": "exit_result",
-                    "success": result.success,
-                    "message": result.message,
-                    "duration_minutes": result.duration_minutes,
-                    "amount_charged": result.amount_charged,
-                    "plate_number": plate_number
-                })
+                result = await parking_client.vehicle_exit(
+                    plate_number, operator_token=token
+                )
+                await websocket.send_json(
+                    {
+                        "type": "exit_result",
+                        "success": result.success,
+                        "message": result.message,
+                        "duration_minutes": result.duration_minutes,
+                        "amount_charged": result.amount_charged,
+                        "plate_number": plate_number,
+                    }
+                )
 
             elif action == "start_all" and settings.CAMERA_MODE == "simulated":
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Start All is disabled in simulation mode; pick a video per camera"
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": "Start All is disabled in simulation mode; pick a video per camera",
+                    }
+                )
 
             elif action == "start_all":
                 cameras = camera_manager.get_cameras()
                 for cam in cameras:
                     await camera_manager.start_camera(cam["id"])
-                await websocket.send_json({
-                    "type": "all_cameras_started"
-                })
+                await websocket.send_json({"type": "all_cameras_started"})
 
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
     except Exception as e:
         print(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
-

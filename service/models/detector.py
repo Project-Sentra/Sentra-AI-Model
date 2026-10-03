@@ -6,6 +6,7 @@ Quantized inference pipeline:
   - YOLO models: loaded as ONNX INT8 via ultralytics (which delegates to onnxruntime)
   - EasyOCR: loaded with PyTorch CPU, then INT8 dynamic-quantized in-memory
 """
+
 import cv2
 import numpy as np
 from typing import Optional
@@ -33,7 +34,9 @@ def get_yolo_model():
             logger.info(f"Loading vehicle detector: {model_path.name}")
             _yolo_model = YOLO(str(model_path))
         else:
-            logger.warning("Vehicle detector model not found. Auto-downloading yolov8n.pt …")
+            logger.warning(
+                "Vehicle detector model not found. Auto-downloading yolov8n.pt …"
+            )
             _yolo_model = YOLO("yolov8n.pt")
 
     return _yolo_model
@@ -51,7 +54,9 @@ def get_plate_model():
             logger.info(f"Loading plate detector: {model_path.name}")
             _plate_model = YOLO(str(model_path))
         else:
-            logger.warning(f"Plate detector model not found at {model_path}. Plate detection disabled.")
+            logger.warning(
+                f"Plate detector model not found at {model_path}. Plate detection disabled."
+            )
             _plate_model = None
 
     return _plate_model
@@ -120,10 +125,12 @@ def preprocess_plate_image(plate_crop: np.ndarray) -> np.ndarray:
     """Preprocess plate crop for better OCR accuracy."""
     gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
     thresh = cv2.adaptiveThreshold(
-        gray, 255,
+        gray,
+        255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        11, 2,
+        11,
+        2,
     )
     denoised = cv2.fastNlMeansDenoising(thresh, None, 10, 7, 21)
     return denoised
@@ -167,7 +174,9 @@ def read_plate_text(plate_crop: np.ndarray) -> tuple[Optional[str], float]:
                 best_confidence = confidence * format_confidence
 
     if best_text:
-        logger.debug(f"[OCR Result] plate='{best_text}' confidence={best_confidence:.2f}")
+        logger.debug(
+            f"[OCR Result] plate='{best_text}' confidence={best_confidence:.2f}"
+        )
     else:
         logger.debug("[OCR Result] No valid plate found in crop.")
 
@@ -205,7 +214,9 @@ def detect_plates(frame: np.ndarray) -> list[dict]:
     plates = []
     for detection in results.boxes.data.tolist():
         x1, y1, x2, y2, conf, class_id = detection
-        plates.append({"bbox": (int(x1), int(y1), int(x2), int(y2)), "confidence": conf})
+        plates.append(
+            {"bbox": (int(x1), int(y1), int(x2), int(y2)), "confidence": conf}
+        )
     return plates
 
 
@@ -250,7 +261,9 @@ def draw_detection_overlay(
     return overlay
 
 
-def detect_plate_in_frame(frame: np.ndarray, min_confidence: float = 0.6) -> DetectionResult:
+def detect_plate_in_frame(
+    frame: np.ndarray, min_confidence: float = 0.6
+) -> DetectionResult:
     """
     Main detection pipeline for a single frame.
 
@@ -311,5 +324,3 @@ def detect_plate_in_frame(frame: np.ndarray, min_confidence: float = 0.6) -> Det
     )
 
     return result
-
-

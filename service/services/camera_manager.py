@@ -2,6 +2,7 @@
 Camera Manager Service
 Handles camera streams and frame distribution
 """
+
 import asyncio
 import cv2
 import base64
@@ -43,6 +44,7 @@ class CameraStatus(Enum):
 @dataclass
 class Camera:
     """Represents a camera source"""
+
     id: str
     name: str
     camera_type: CameraType
@@ -57,6 +59,7 @@ class Camera:
 @dataclass
 class FrameUpdate:
     """Frame update for WebSocket broadcast"""
+
     camera_id: str
     frame_base64: str
     timestamp: float
@@ -83,7 +86,7 @@ class CameraManager:
             id="entry_cam_01",
             name="Entry Gate 01",
             camera_type=CameraType.ENTRY,
-            source=settings.ENTRY_CAMERA_SOURCE
+            source=settings.ENTRY_CAMERA_SOURCE,
         )
         self._cameras[entry_camera.id] = entry_camera
 
@@ -92,7 +95,7 @@ class CameraManager:
             id="exit_cam_01",
             name="Exit Gate 01",
             camera_type=CameraType.EXIT,
-            source=settings.EXIT_CAMERA_SOURCE
+            source=settings.EXIT_CAMERA_SOURCE,
         )
         self._cameras[exit_camera.id] = exit_camera
 
@@ -134,7 +137,8 @@ class CameraManager:
         if not SAMPLE_VIDEOS_DIR.is_dir():
             return []
         return sorted(
-            p.name for p in SAMPLE_VIDEOS_DIR.iterdir()
+            p.name
+            for p in SAMPLE_VIDEOS_DIR.iterdir()
             if p.suffix.lower() in {".mp4", ".avi", ".mov", ".mkv"}
         )
 
@@ -177,7 +181,7 @@ class CameraManager:
                 "status": cam.status.value,
                 "source": mask_source(cam.source),
                 "frame_count": cam.frame_count,
-                "error": cam.error_message
+                "error": cam.error_message,
             }
             for cam in self._cameras.values()
         ]
@@ -189,8 +193,7 @@ class CameraManager:
     def get_active_count(self) -> int:
         """Get count of active cameras"""
         return sum(
-            1 for cam in self._cameras.values()
-            if cam.status == CameraStatus.RUNNING
+            1 for cam in self._cameras.values() if cam.status == CameraStatus.RUNNING
         )
 
     async def start_camera(self, camera_id: str, video: Optional[str] = None) -> bool:
@@ -274,44 +277,42 @@ class CameraManager:
                     continue
 
                 # Resize frame
-                frame = cv2.resize(
-                    frame,
-                    (settings.FRAME_WIDTH, settings.FRAME_HEIGHT)
-                )
+                frame = cv2.resize(frame, (settings.FRAME_WIDTH, settings.FRAME_HEIGHT))
 
                 # Process frame for plate detection
                 result, detection = await plate_detector_service.process_frame(
-                    frame,
-                    camera.id,
-                    camera.camera_type.value,
-                    seen
+                    frame, camera.id, camera.camera_type.value, seen
                 )
 
                 # Use frame with overlay if available
-                display_frame = result.frame_with_overlay if result.frame_with_overlay is not None else frame
+                display_frame = (
+                    result.frame_with_overlay
+                    if result.frame_with_overlay is not None
+                    else frame
+                )
                 camera.last_frame = display_frame
 
                 # Encode frame as JPEG base64
                 _, buffer = cv2.imencode(
-                    '.jpg',
+                    ".jpg",
                     display_frame,
-                    [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY]
+                    [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY],
                 )
-                frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                frame_base64 = base64.b64encode(buffer).decode("utf-8")
 
                 # Create frame update
                 update = FrameUpdate(
                     camera_id=camera.id,
                     frame_base64=frame_base64,
                     timestamp=time.time(),
-                    detection=detection.plate_text if detection else None
+                    detection=detection.plate_text if detection else None,
                 )
 
                 # Broadcast to callbacks
                 await self._broadcast_frame(update)
 
                 # Control frame rate
-                await asyncio.sleep(1/30)  # ~30 FPS
+                await asyncio.sleep(1 / 30)  # ~30 FPS
 
         except asyncio.CancelledError:
             pass
@@ -346,4 +347,3 @@ class CameraManager:
 
 # Singleton instance
 camera_manager = CameraManager()
-

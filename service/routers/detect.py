@@ -2,6 +2,7 @@
 Detection Router
 Handles image-based plate detection requests
 """
+
 import cv2
 import numpy as np
 import base64
@@ -13,13 +14,13 @@ from models.detector import detect_plate_in_frame
 from config import settings
 from services.operator_auth import require_operator
 
-
 # Detection is CPU-heavy, so it is restricted to logged-in operators
 router = APIRouter(dependencies=[Depends(require_operator)])
 
 
 class DetectionResponse(BaseModel):
     """Response model for detection endpoint"""
+
     success: bool
     plate_text: Optional[str] = None
     confidence: Optional[float] = None
@@ -32,15 +33,13 @@ class DetectionResponse(BaseModel):
 
 class Base64ImageRequest(BaseModel):
     """Request model for base64 image detection"""
+
     image: str  # Base64 encoded image
     return_image: bool = False
 
 
 @router.post("/detect/image", response_model=DetectionResponse)
-async def detect_from_upload(
-    file: UploadFile = File(...),
-    return_image: bool = False
-):
+async def detect_from_upload(file: UploadFile = File(...), return_image: bool = False):
     """
     Detect license plate from uploaded image file.
 
@@ -70,13 +69,13 @@ async def detect_from_upload(
             plate_bbox=list(result.plate_bbox) if result.plate_bbox else None,
             vehicle_bbox=list(result.vehicle_bbox) if result.vehicle_bbox else None,
             vehicle_class=result.vehicle_class,
-            message="Plate detected" if result.plate_text else "No plate detected"
+            message="Plate detected" if result.plate_text else "No plate detected",
         )
 
         # Include processed image if requested
         if return_image and result.frame_with_overlay is not None:
-            _, buffer = cv2.imencode('.jpg', result.frame_with_overlay)
-            response.processed_image = base64.b64encode(buffer).decode('utf-8')
+            _, buffer = cv2.imencode(".jpg", result.frame_with_overlay)
+            response.processed_image = base64.b64encode(buffer).decode("utf-8")
 
         return response
 
@@ -113,13 +112,13 @@ async def detect_from_base64(request: Base64ImageRequest):
             plate_bbox=list(result.plate_bbox) if result.plate_bbox else None,
             vehicle_bbox=list(result.vehicle_bbox) if result.vehicle_bbox else None,
             vehicle_class=result.vehicle_class,
-            message="Plate detected" if result.plate_text else "No plate detected"
+            message="Plate detected" if result.plate_text else "No plate detected",
         )
 
         # Include processed image if requested
         if request.return_image and result.frame_with_overlay is not None:
-            _, buffer = cv2.imencode('.jpg', result.frame_with_overlay)
-            response.processed_image = base64.b64encode(buffer).decode('utf-8')
+            _, buffer = cv2.imencode(".jpg", result.frame_with_overlay)
+            response.processed_image = base64.b64encode(buffer).decode("utf-8")
 
         return response
 

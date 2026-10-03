@@ -2,6 +2,7 @@
 Plate Detector Service
 High-level detection service with caching and deduplication
 """
+
 import asyncio
 import time
 from typing import Optional, Callable
@@ -16,6 +17,7 @@ from models.detector import detect_plate_in_frame, DetectionResult
 @dataclass
 class DetectionEvent:
     """Represents a plate detection event"""
+
     plate_text: str
     confidence: float
     camera_id: str
@@ -82,7 +84,7 @@ class PlateDetectorService:
         frame: np.ndarray,
         camera_id: str,
         camera_type: str = "entry",
-        seen: Optional[set[str]] = None
+        seen: Optional[set[str]] = None,
     ) -> tuple[DetectionResult, Optional[DetectionEvent]]:
         """
         Process a single frame for plate detection.
@@ -100,7 +102,8 @@ class PlateDetectorService:
         if result.plate_text:
             # Check for duplicate
             duplicate = (
-                result.plate_text in seen if seen is not None
+                result.plate_text in seen
+                if seen is not None
                 else self._is_duplicate(result.plate_text)
             )
             if not duplicate:
@@ -118,7 +121,7 @@ class PlateDetectorService:
                     timestamp=time.time(),
                     plate_bbox=result.plate_bbox,
                     vehicle_bbox=result.vehicle_bbox,
-                    vehicle_class=result.vehicle_class
+                    vehicle_class=result.vehicle_class,
                 )
 
                 # Notify callbacks
@@ -133,4 +136,3 @@ class PlateDetectorService:
 
 # Singleton instance
 plate_detector_service = PlateDetectorService()
-

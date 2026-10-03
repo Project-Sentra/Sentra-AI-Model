@@ -19,8 +19,12 @@ def test_client():
         async def async_noop():
             pass
 
-        mock_cm.initialize = MagicMock(side_effect=lambda: asyncio.coroutine(lambda: None)())
-        mock_cm.cleanup = MagicMock(side_effect=lambda: asyncio.coroutine(lambda: None)())
+        mock_cm.initialize = MagicMock(
+            side_effect=lambda: asyncio.coroutine(lambda: None)()
+        )
+        mock_cm.cleanup = MagicMock(
+            side_effect=lambda: asyncio.coroutine(lambda: None)()
+        )
 
         from main import app
 

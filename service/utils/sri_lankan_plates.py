@@ -2,50 +2,55 @@
 Sri Lankan License Plate Validation and Formatting
 Supports multiple Sri Lankan plate formats.
 """
+
 import re
 import string
 
 SL_PROVINCE_CODES = {
-    'WP': 'Western Province',
-    'CP': 'Central Province',
-    'SP': 'Southern Province',
-    'NW': 'North Western Province',
-    'NC': 'North Central Province',
-    'UP': 'Uva Province',
-    'SG': 'Sabaragamuwa Province',
-    'EP': 'Eastern Province',
-    'NP': 'Northern Province',
+    "WP": "Western Province",
+    "CP": "Central Province",
+    "SP": "Southern Province",
+    "NW": "North Western Province",
+    "NC": "North Central Province",
+    "UP": "Uva Province",
+    "SG": "Sabaragamuwa Province",
+    "EP": "Eastern Province",
+    "NP": "Northern Province",
 }
 
 # Common letter/number misrecognitions for OCR correction
 CHAR_TO_INT = {
-    'O': '0', 'Q': '0', 'D': '0',
-    'I': '1', 'L': '1',
-    'Z': '2',
-    'J': '3',
-    'A': '4',
-    'S': '5',
-    'G': '6', 'B': '8',
-    'T': '7',
-    'B': '8',
+    "O": "0",
+    "Q": "0",
+    "D": "0",
+    "I": "1",
+    "L": "1",
+    "Z": "2",
+    "J": "3",
+    "A": "4",
+    "S": "5",
+    "G": "6",
+    "B": "8",
+    "T": "7",
+    "B": "8",
 }
 
 INT_TO_CHAR = {
-    '0': 'O',
-    '1': 'I',
-    '2': 'Z',
-    '3': 'J',
-    '4': 'A',
-    '5': 'S',
-    '6': 'G',
-    '7': 'T',
-    '8': 'B',
+    "0": "O",
+    "1": "I",
+    "2": "Z",
+    "3": "J",
+    "4": "A",
+    "5": "S",
+    "6": "G",
+    "7": "T",
+    "8": "B",
 }
 
 
 def normalize_text(text: str) -> str:
     """Remove spaces and convert to uppercase"""
-    return text.upper().replace(' ', '').replace('-', '')
+    return text.upper().replace(" ", "").replace("-", "")
 
 
 def validate_modern_format(text: str) -> tuple[bool, str | None]:
@@ -56,7 +61,7 @@ def validate_modern_format(text: str) -> tuple[bool, str | None]:
     normalized = normalize_text(text)
 
     # Pattern: 2 province chars + 2-3 letters + 4 numbers
-    pattern = r'^([A-Z]{2})([A-Z]{2,3})(\d{4})$'
+    pattern = r"^([A-Z]{2})([A-Z]{2,3})(\d{4})$"
     match = re.match(pattern, normalized)
 
     if match:
@@ -75,7 +80,7 @@ def validate_provincial_numeric(text: str) -> tuple[bool, str | None]:
     """
     normalized = normalize_text(text)
 
-    pattern = r'^([A-Z]{2})(\d{4})$'
+    pattern = r"^([A-Z]{2})(\d{4})$"
     match = re.match(pattern, normalized)
 
     if match:
@@ -95,7 +100,7 @@ def validate_old_format(text: str) -> tuple[bool, str | None]:
     normalized = normalize_text(text)
 
     # Pattern: 2-3 numbers + 4 numbers
-    pattern = r'^(\d{2,3})(\d{4})$'
+    pattern = r"^(\d{2,3})(\d{4})$"
     match = re.match(pattern, normalized)
 
     if match:
@@ -113,7 +118,7 @@ def validate_special_format(text: str) -> tuple[bool, str | None]:
     """
     normalized = normalize_text(text)
 
-    pattern = r'^([A-Z]{3})(\d{4})$'
+    pattern = r"^([A-Z]{3})(\d{4})$"
     match = re.match(pattern, normalized)
 
     if match:
@@ -137,12 +142,12 @@ def correct_ocr_errors(text: str, expected_positions: dict) -> str:
 
         char = corrected[pos]
 
-        if expected_type == 'digit' and char in CHAR_TO_INT:
+        if expected_type == "digit" and char in CHAR_TO_INT:
             corrected[pos] = CHAR_TO_INT[char]
-        elif expected_type == 'letter' and char in INT_TO_CHAR:
+        elif expected_type == "letter" and char in INT_TO_CHAR:
             corrected[pos] = INT_TO_CHAR[char]
 
-    return ''.join(corrected)
+    return "".join(corrected)
 
 
 def validate_sri_lankan_plate(text: str) -> tuple[bool, str | None, str]:
@@ -184,7 +189,7 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
     normalized = normalize_text(raw_text)
 
     # Remove common noise characters
-    cleaned = re.sub(r'[^A-Z0-9]', '', normalized)
+    cleaned = re.sub(r"[^A-Z0-9]", "", normalized)
 
     if len(cleaned) < 4:
         return None, 0.0
@@ -203,8 +208,10 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
         numbers = cleaned[-4:]
 
         # Correct OCR errors
-        expected = {i: 'letter' for i in range(len(province) + len(letters))}
-        expected.update({i: 'digit' for i in range(len(province) + len(letters), len(cleaned))})
+        expected = {i: "letter" for i in range(len(province) + len(letters))}
+        expected.update(
+            {i: "digit" for i in range(len(province) + len(letters), len(cleaned))}
+        )
         corrected = correct_ocr_errors(cleaned, expected)
 
         is_valid, formatted = validate_modern_format(corrected)
@@ -215,8 +222,8 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
         # Could be WP1234 or 12-3456 or CAR1234
 
         # Try provincial numeric
-        expected = {0: 'letter', 1: 'letter'}
-        expected.update({i: 'digit' for i in range(2, 6)})
+        expected = {0: "letter", 1: "letter"}
+        expected.update({i: "digit" for i in range(2, 6)})
         corrected = correct_ocr_errors(cleaned[:6], expected)
         is_valid, formatted = validate_provincial_numeric(corrected)
         if is_valid:
@@ -226,12 +233,12 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
         # Checked before old format when OCR saw letters, so "SL1234" isn't
         # turned into "51-1234". Scored just below known province codes.
         if len(cleaned) == 6 and cleaned[:2].isalpha():
-            corrected = correct_ocr_errors(cleaned, {i: 'digit' for i in range(2, 6)})
+            corrected = correct_ocr_errors(cleaned, {i: "digit" for i in range(2, 6)})
             if corrected[2:].isdigit():
                 return f"{corrected[:2]} {corrected[2:]}", 0.8
 
         # Try old format
-        expected = {i: 'digit' for i in range(len(cleaned))}
+        expected = {i: "digit" for i in range(len(cleaned))}
         corrected = correct_ocr_errors(cleaned, expected)
         is_valid, formatted = validate_old_format(corrected)
         if is_valid:
@@ -239,8 +246,8 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
 
         # Try special format
         if len(cleaned) >= 7:
-            expected = {0: 'letter', 1: 'letter', 2: 'letter'}
-            expected.update({i: 'digit' for i in range(3, 7)})
+            expected = {0: "letter", 1: "letter", 2: "letter"}
+            expected.update({i: "digit" for i in range(3, 7)})
             corrected = correct_ocr_errors(cleaned[:7], expected)
             is_valid, formatted = validate_special_format(corrected)
             if is_valid:
@@ -264,4 +271,3 @@ def get_province_name(plate: str) -> str | None:
         code = normalized[:2]
         return SL_PROVINCE_CODES.get(code)
     return None
-

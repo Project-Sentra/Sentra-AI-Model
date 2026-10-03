@@ -10,7 +10,9 @@ def test_start_requires_listed_video(monkeypatch):
     monkeypatch.setattr(settings, "CAMERA_MODE", "simulated")
     cm = CameraManager()
     asyncio.run(cm.initialize())
-    assert all(v.lower().endswith((".mp4", ".avi", ".mov", ".mkv")) for v in cm.list_videos())
+    assert all(
+        v.lower().endswith((".mp4", ".avi", ".mov", ".mkv")) for v in cm.list_videos()
+    )
 
     # No pick, or a path outside sample_videos/ -> refused, nothing started
     assert not asyncio.run(cm.start_camera("entry_cam_01"))
@@ -29,8 +31,14 @@ def test_plate_fires_once_per_run(monkeypatch):
 
     monkeypatch.setattr(pd, "detect_plate_in_frame", fake_detect)
     svc, seen = pd.PlateDetectorService(), set()
-    events = [asyncio.run(svc.process_frame(None, "entry_cam_01", "entry", seen))[1] for _ in range(5)]
+    events = [
+        asyncio.run(svc.process_frame(None, "entry_cam_01", "entry", seen))[1]
+        for _ in range(5)
+    ]
     assert sum(e is not None for e in events) == 1
 
     # New run (fresh set) reports it again
-    assert asyncio.run(svc.process_frame(None, "entry_cam_01", "entry", set()))[1] is not None
+    assert (
+        asyncio.run(svc.process_frame(None, "entry_cam_01", "entry", set()))[1]
+        is not None
+    )

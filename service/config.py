@@ -1,6 +1,7 @@
 """
 SentraAI Service Configuration
 """
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ SERVICE_DIR = Path(__file__).parent
 # Load .env file
 load_dotenv(SERVICE_DIR / ".env")
 
+
 # Environment configuration
 class Settings:
     # Server settings
@@ -24,21 +26,21 @@ class Settings:
     # Camera settings
     CAMERA_MODE: str = os.getenv("CAMERA_MODE", "simulated")  # simulated | live
     ENTRY_CAMERA_SOURCE: str = os.getenv(
-        "ENTRY_CAMERA_SOURCE",
-        str(SAMPLE_VIDEOS_DIR / "sample_video.mp4")
+        "ENTRY_CAMERA_SOURCE", str(SAMPLE_VIDEOS_DIR / "sample_video.mp4")
     )
     EXIT_CAMERA_SOURCE: str = os.getenv(
-        "EXIT_CAMERA_SOURCE",
-        str(SAMPLE_VIDEOS_DIR / "sample_video.mp4")
+        "EXIT_CAMERA_SOURCE", str(SAMPLE_VIDEOS_DIR / "sample_video.mp4")
     )
 
     # Model paths — prefer quantized ONNX models, fall back to .pt for dev
     YOLO_MODEL: str = str(
         MODELS_DIR / "yolov8n.onnx"
         if (MODELS_DIR / "yolov8n.onnx").exists()
-        else SERVICE_DIR / "yolov8n.onnx"
-        if (SERVICE_DIR / "yolov8n.onnx").exists()
-        else SERVICE_DIR / "yolov8n.pt"
+        else (
+            SERVICE_DIR / "yolov8n.onnx"
+            if (SERVICE_DIR / "yolov8n.onnx").exists()
+            else SERVICE_DIR / "yolov8n.pt"
+        )
     )
     PLATE_DETECTOR_MODEL: str = str(
         MODELS_DIR / "license_plate_detector.onnx"
@@ -66,5 +68,5 @@ class Settings:
     FRAME_HEIGHT: int = int(os.getenv("FRAME_HEIGHT", "480"))
     JPEG_QUALITY: int = int(os.getenv("JPEG_QUALITY", "80"))
 
-settings = Settings()
 
+settings = Settings()

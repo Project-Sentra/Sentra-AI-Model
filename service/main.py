@@ -2,6 +2,7 @@
 SentraAI Service - FastAPI Entry Point
 License Plate Recognition Microservice
 """
+
 import asyncio
 import os
 from contextlib import asynccontextmanager
@@ -38,7 +39,7 @@ app = FastAPI(
     title="SentraAI",
     description="License Plate Recognition Service for Sentra Parking System",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware.
@@ -65,7 +66,7 @@ async def health_check():
         "service": "SentraAI",
         "version": "1.0.0",
         "camera_mode": settings.CAMERA_MODE,
-        "cameras_active": camera_manager.get_active_count()
+        "cameras_active": camera_manager.get_active_count(),
     }
 
 
@@ -79,16 +80,14 @@ async def root():
             "health": "/api/health",
             "detect": "/api/detect/image",
             "cameras": "/api/cameras",
-            "websocket": "/api/ws"
-        }
+            "websocket": "/api/ws",
+        },
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
-        "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG
+        "main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG
     )

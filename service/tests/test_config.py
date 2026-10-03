@@ -24,8 +24,11 @@ def test_settings_model_paths():
     from config import Settings
 
     s = Settings()
-    assert "yolov8n.pt" in s.YOLO_MODEL
-    assert "license_plate_detector.pt" in s.PLATE_DETECTOR_MODEL
+    # Config prefers exported ONNX models (CI exports them), falls back to .pt
+    assert s.YOLO_MODEL.endswith(("yolov8n.onnx", "yolov8n.pt"))
+    assert s.PLATE_DETECTOR_MODEL.endswith(
+        ("license_plate_detector.onnx", "license_plate_detector.pt")
+    )
 
 
 def test_settings_parking_api_url():
