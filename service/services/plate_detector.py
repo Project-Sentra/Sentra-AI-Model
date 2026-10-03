@@ -81,10 +81,13 @@ class PlateDetectorService:
         self,
         frame: np.ndarray,
         camera_id: str,
-        camera_type: str = "entry"
+        camera_type: str = "entry",
+        seen: Optional[set[str]] = None
     ) -> tuple[DetectionResult, Optional[DetectionEvent]]:
         """
         Process a single frame for plate detection.
+        `seen`: plates already reported this run — each fires once (simulated video).
+        Without it, the time-based cooldown applies.
 
         Returns:
             tuple: (DetectionResult, DetectionEvent or None if duplicate)
@@ -96,9 +99,16 @@ class PlateDetectorService:
 
         if result.plate_text:
             # Check for duplicate
-            if not self._is_duplicate(result.plate_text):
+            duplicate = (
+                result.plate_text in seen if seen is not None
+                else self._is_duplicate(result.plate_text)
+            )
+            if not duplicate:
                 # New detection!
-                self._record_detection(result.plate_text)
+                if seen is not None:
+                    seen.add(result.plate_text)
+                else:
+                    self._record_detection(result.plate_text)
 
                 event = DetectionEvent(
                     plate_text=result.plate_text,

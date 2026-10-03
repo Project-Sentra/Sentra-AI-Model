@@ -12,7 +12,7 @@ from enum import Enum
 from urllib.parse import urlsplit, urlunsplit
 import numpy as np
 
-from config import settings
+from config import settings, SAMPLE_VIDEOS_DIR
 from services.plate_detector import plate_detector_service, DetectionEvent
 from services.parking_client import parking_client
 
@@ -71,6 +71,7 @@ class CameraManager:
         self._capture_tasks: dict[str, asyncio.Task] = {}
         self._frame_callbacks: list[Callable[[FrameUpdate], Any]] = []
         self._detection_callbacks: list[Callable[[DetectionEvent, Any], Any]] = []
+        self._status_callbacks: list[Callable[[Camera], Any]] = []
         self._running = False
 
     async def initialize(self):
@@ -123,6 +124,19 @@ class CameraManager:
     def add_detection_callback(self, callback: Callable[[DetectionEvent, Any], Any]):
         """Register a callback for detection events"""
         self._detection_callbacks.append(callback)
+
+    def add_status_callback(self, callback: Callable[[Camera], Any]):
+        """Register a callback fired when a camera stops (e.g. video finished)"""
+        self._status_callbacks.append(callback)
+
+    def list_videos(self) -> list[str]:
+        """Video files selectable in simulated mode — copy new ones into sample_videos/"""
+        if not SAMPLE_VIDEOS_DIR.is_dir():
+            return []
+        return sorted(
+            p.name for p in SAMPLE_VIDEOS_DIR.iterdir()
+            if p.suffix.lower() in {".mp4", ".avi", ".mov", ".mkv"}
+        )
 
     async def _on_detection(self, event: DetectionEvent):
         """Handle detection event from plate detector"""
@@ -179,14 +193,21 @@ class CameraManager:
             if cam.status == CameraStatus.RUNNING
         )
 
-    async def start_camera(self, camera_id: str) -> bool:
-        """Start streaming from a camera"""
+    async def start_camera(self, camera_id: str, video: Optional[str] = None) -> bool:
+        """Start streaming from a camera. Simulated mode requires a video picked from list_videos()."""
         camera = self._cameras.get(camera_id)
         if not camera:
             return False
 
         if camera_id in self._capture_tasks:
             return True  # Already running
+
+        if settings.CAMERA_MODE == "simulated":
+            # Only names we listed are accepted, so no arbitrary file paths
+            if video not in self.list_videos():
+                camera.error_message = "Select a video to simulate"
+                return False
+            camera.source = str(SAMPLE_VIDEOS_DIR / video)
 
         # Start capture task
         task = asyncio.create_task(self._capture_loop(camera))
@@ -235,17 +256,14 @@ class CameraManager:
             camera.status = CameraStatus.RUNNING
             camera.error_message = None
             frame_count = 0
+            # Simulated video = one vehicle pass: report each plate once per Start
+            seen = set() if settings.CAMERA_MODE == "simulated" else None
 
             while self._running:
                 ret, frame = cap.read()
 
                 if not ret:
-                    # Loop video for simulated mode
-                    if settings.CAMERA_MODE == "simulated":
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        continue
-                    else:
-                        break
+                    break  # Video finished (played once) or stream dropped
 
                 frame_count += 1
                 camera.frame_count = frame_count
@@ -265,7 +283,8 @@ class CameraManager:
                 result, detection = await plate_detector_service.process_frame(
                     frame,
                     camera.id,
-                    camera.camera_type.value
+                    camera.camera_type.value,
+                    seen
                 )
 
                 # Use frame with overlay if available
@@ -304,6 +323,14 @@ class CameraManager:
             if cap:
                 cap.release()
             camera.status = CameraStatus.STOPPED
+            # Ended on its own: drop the task so the camera can be started again
+            if self._capture_tasks.get(camera.id) is asyncio.current_task():
+                self._capture_tasks.pop(camera.id)
+            for callback in self._status_callbacks:
+                try:
+                    await callback(camera)
+                except Exception as e:
+                    print(f"Error in status callback: {e}")
 
     async def _broadcast_frame(self, update: FrameUpdate):
         """Broadcast frame update to all callbacks"""

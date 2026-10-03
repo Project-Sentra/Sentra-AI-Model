@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPExce
 from pydantic import BaseModel
 from typing import Optional
 
-from services.camera_manager import camera_manager, FrameUpdate, mask_source
+from config import settings
+from services.camera_manager import camera_manager, Camera, FrameUpdate, mask_source
 from services.plate_detector import DetectionEvent
 from services.parking_client import parking_client
 from services.operator_auth import (
@@ -75,18 +76,18 @@ async def get_camera(camera_id: str) -> CameraResponse:
 
 
 @router.post("/cameras/{camera_id}/start", dependencies=[Depends(require_operator)])
-async def start_camera(camera_id: str):
-    """Start streaming from a camera"""
+async def start_camera(camera_id: str, video: Optional[str] = None):
+    """Start streaming from a camera (simulated mode: ?video=<file in sample_videos>)"""
     camera = camera_manager.get_camera(camera_id)
     if not camera:
         raise HTTPException(404, f"Camera {camera_id} not found")
 
-    success = await camera_manager.start_camera(camera_id)
+    success = await camera_manager.start_camera(camera_id, video)
 
     if success:
         return {"message": f"Camera {camera_id} started", "status": "running"}
     else:
-        raise HTTPException(500, f"Failed to start camera {camera_id}")
+        raise HTTPException(400, camera.error_message or f"Failed to start camera {camera_id}")
 
 
 @router.post("/cameras/{camera_id}/stop", dependencies=[Depends(require_operator)])
@@ -103,6 +104,8 @@ async def stop_camera(camera_id: str):
 @router.post("/cameras/start-all", dependencies=[Depends(require_operator)])
 async def start_all_cameras():
     """Start all configured cameras"""
+    if settings.CAMERA_MODE == "simulated":
+        raise HTTPException(400, "Start All is disabled in simulation mode; pick a video per camera")
     cameras = camera_manager.get_cameras()
     started = []
 
@@ -219,9 +222,19 @@ async def broadcast_detection(event: DetectionEvent, _):
     await ws_manager.broadcast(message)
 
 
+# Status callback: tells every client a camera stopped (e.g. simulated video finished)
+async def broadcast_status(camera: Camera):
+    await ws_manager.broadcast({
+        "type": "camera_status",
+        "camera_id": camera.id,
+        "status": camera.status.value
+    })
+
+
 # Register callbacks
 camera_manager.add_frame_callback(broadcast_frame)
 camera_manager.add_detection_callback(broadcast_detection)
+camera_manager.add_status_callback(broadcast_status)
 
 
 @router.websocket("/ws")
@@ -257,7 +270,9 @@ async def websocket_endpoint(websocket: WebSocket):
         cameras = camera_manager.get_cameras()
         await websocket.send_json({
             "type": "cameras_list",
-            "cameras": cameras
+            "cameras": cameras,
+            "mode": settings.CAMERA_MODE,
+            "videos": camera_manager.list_videos()
         })
 
         # Listen for commands
@@ -276,7 +291,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if action == "start_camera":
                 camera_id = data.get("camera_id")
-                success = await camera_manager.start_camera(camera_id)
+                success = await camera_manager.start_camera(camera_id, data.get("video"))
                 await websocket.send_json({
                     "type": "camera_status",
                     "camera_id": camera_id,
@@ -315,6 +330,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     "duration_minutes": result.duration_minutes,
                     "amount_charged": result.amount_charged,
                     "plate_number": plate_number
+                })
+
+            elif action == "start_all" and settings.CAMERA_MODE == "simulated":
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Start All is disabled in simulation mode; pick a video per camera"
                 })
 
             elif action == "start_all":
