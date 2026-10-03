@@ -286,13 +286,6 @@ def detect_plate_in_frame(frame: np.ndarray, min_confidence: float = 0.6) -> Det
 
     plate_text, text_confidence = read_plate_text(plate_crop)
 
-    # DEMO MODE: Force-detect a known plate when OCR struggles with the sample video
-    from config import settings
-    if settings.CAMERA_MODE == "simulated" and (not plate_text or text_confidence < 0.4):
-        logger.info("[DEMO] Force-detecting 'CBN 9959' for demo video.")
-        plate_text = "CBN 9959"
-        text_confidence = 0.95
-
     # Match plate to enclosing vehicle bbox
     vehicle_bbox = None
     vehicle_class = None
