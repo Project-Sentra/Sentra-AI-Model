@@ -176,6 +176,16 @@ class TestSmartFormatPlate:
         assert result is not None
         assert confidence > 0.0
 
+    def test_generic_two_letter_prefix(self):
+        for raw in ("PR 0204", "PR0204", "PRO204", "PR02O4"):
+            assert smart_format_plate(raw) == ("PR 0204", 0.8)
+
+    def test_province_beats_generic(self):
+        assert smart_format_plate("WP1234") == ("WP 1234", 1.0)
+
+    def test_letters_not_forced_to_old_format(self):
+        assert smart_format_plate("SL1234") == ("SL 1234", 0.8)
+
 
 class TestOCRCorrection:
     def test_correct_o_to_zero(self):

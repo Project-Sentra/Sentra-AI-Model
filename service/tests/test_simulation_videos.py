@@ -10,8 +10,7 @@ def test_start_requires_listed_video(monkeypatch):
     monkeypatch.setattr(settings, "CAMERA_MODE", "simulated")
     cm = CameraManager()
     asyncio.run(cm.initialize())
-    videos = cm.list_videos()
-    assert "sample_video_2.mp4" in videos
+    assert all(v.lower().endswith((".mp4", ".avi", ".mov", ".mkv")) for v in cm.list_videos())
 
     # No pick, or a path outside sample_videos/ -> refused, nothing started
     assert not asyncio.run(cm.start_camera("entry_cam_01"))

@@ -222,6 +222,14 @@ def smart_format_plate(raw_text: str) -> tuple[str | None, float]:
         if is_valid:
             return formatted, 0.85
 
+        # Any 2 letters + 4 digits with a non-province prefix (e.g. PR 0204).
+        # Checked before old format when OCR saw letters, so "SL1234" isn't
+        # turned into "51-1234". Scored just below known province codes.
+        if len(cleaned) == 6 and cleaned[:2].isalpha():
+            corrected = correct_ocr_errors(cleaned, {i: 'digit' for i in range(2, 6)})
+            if corrected[2:].isdigit():
+                return f"{corrected[:2]} {corrected[2:]}", 0.8
+
         # Try old format
         expected = {i: 'digit' for i in range(len(cleaned))}
         corrected = correct_ocr_errors(cleaned, expected)
