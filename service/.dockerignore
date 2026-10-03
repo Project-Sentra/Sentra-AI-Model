@@ -1,0 +1,21 @@
+# Secrets / local config (never bake into images)
+.env
+.env.*
+!.env.example
+
+# Python caches and virtualenvs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+
+# Tests are not needed at runtime
+tests/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

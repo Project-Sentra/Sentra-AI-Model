@@ -19,8 +19,6 @@ WORKDIR /app
 # Build tools (needed to compile some Python extensions)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 1. Install PyTorch CPU-only FIRST (separate index URL keeps the full CUDA
@@ -37,14 +35,20 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.t
 # ── Stage 2: Production ──────────────────────────────────────
 FROM python:3.11-slim AS production
 
-# Non-root user for security
-RUN groupadd -r sentra && useradd -r -g sentra sentra
+# Non-root user for security. It needs a home directory because EasyOCR
+# downloads its recognition models to ~/.EasyOCR on first start
+# (mount a volume there to keep them across restarts).
+RUN groupadd -r sentra && useradd -r -m -g sentra sentra \
+    && mkdir -p /home/sentra/.EasyOCR \
+    && chown -R sentra:sentra /home/sentra
 
 WORKDIR /app
 
-# Minimal runtime system deps for OpenCV headless + EasyOCR
+# Runtime system deps for OpenCV + EasyOCR.
+# libgl1 replaces libgl1-mesa-glx, which no longer exists in current Debian
+# (ultralytics pulls in the non-headless opencv-python, which needs libGL).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
