@@ -1,15 +1,23 @@
 name: Deploy AI Service to GCP
 
-# Runs after "AI Service CI" succeeds on main (or manually). Connects to the
-# GCP VM over SSH, updates Sentra-AI-Model to the tested commit and rebuilds
-# the ai-service container. The VM itself is created by Terraform and
-# configured by Ansible (Sentra-Infrastructure); this only ships new code.
+# Runs after "AI Service CI" succeeds on main (or manually).
 #
+#   1. Builds the ai-service image and pushes it to Artifact
+#      Registry, tagged with the commit SHA and "latest". Google access is
+#      keyless: Workload Identity Federation exchanges GitHub's OIDC token
+#      for a 1-hour token (Sentra-Infrastructure terraform/gcp/registry.tf).
+#   2. SSHes to the VM, logs it in with that short-lived token, pulls the
+#      image for this exact commit and restarts the ai-service container.
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   GCP_IMAGE_REGISTRY      terraform output image_registry
+#   GCP_WIF_PROVIDER        terraform output github_wif_provider
+#   GCP_CI_SERVICE_ACCOUNT  terraform output ci_service_account
 # Repository secrets:
-#   GCP_HOST         VM external IP (terraform output external_ip)
-#   GCP_SSH_KEY      private key of the CI deploy key (no passphrase)
-#   GCP_KNOWN_HOSTS  output of: ssh-keyscan -t ed25519 <GCP_HOST>
-# Without them the deploy is skipped, so forks and new clones stay green.
+#   GCP_HOST, GCP_SSH_KEY, GCP_KNOWN_HOSTS   SSH access to the VM
+#
+# Without GCP_IMAGE_REGISTRY the images are built on the VM instead (the
+# previous behaviour), and without GCP_HOST the deploy is skipped.
 
 on:
   workflow_run:
@@ -24,10 +32,11 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write # OIDC token for Workload Identity Federation
 
 jobs:
   deploy:
-    name: Deploy AI service
+    name: Build, push and deploy the AI service
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -35,28 +44,112 @@ jobs:
        github.event.workflow_run.event == 'push')
     env:
       GCP_HOST: ${{ secrets.GCP_HOST }}
+      REGISTRY: ${{ vars.GCP_IMAGE_REGISTRY }}
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Check deploy secrets
-        id: secrets
+      - name: Check configuration
+        id: cfg
         run: |
           if [ -z "$GCP_HOST" ]; then
             echo "::notice::GCP deploy secrets are not set; skipping deployment."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "ready=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$REGISTRY" ]; then
+            {
+              echo "registry=true"
+              echo "host=${REGISTRY%%/*}"
+              echo "tag=${DEPLOY_SHA::12}"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::GCP_IMAGE_REGISTRY is not set; the image will be built on the VM."
+            echo "registry=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── 1. Build and push images ───────────────────────────────────────
+      - name: Checkout the tested commit
+        if: steps.cfg.outputs.registry == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Authenticate to Google Cloud (keyless)
+        if: steps.cfg.outputs.registry == 'true'
+        id: gcp
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 3600s
+
+      - name: Log in to Artifact Registry
+        if: steps.cfg.outputs.registry == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.cfg.outputs.host }}
+          username: oauth2accesstoken
+          password: ${{ steps.gcp.outputs.access_token }}
+
+      - name: Set up Docker Buildx
+        if: steps.cfg.outputs.registry == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ai-service
+        if: steps.cfg.outputs.registry == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./service
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/ai-service:${{ steps.cfg.outputs.tag }}
+            ${{ env.REGISTRY }}/ai-service:latest
+          cache-from: type=gha,scope=ai-service
+          cache-to: type=gha,mode=max,scope=ai-service
+
+      # ── 2. Deploy on the VM ────────────────────────────────────────────
       - name: Set up SSH
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.cfg.outputs.ready == 'true'
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "${{ secrets.GCP_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      - name: Update code and rebuild containers
-        if: steps.secrets.outputs.ready == 'true'
+      - name: Pull images and restart containers
+        if: steps.cfg.outputs.registry == 'true'
+        env:
+          TOKEN: ${{ steps.gcp.outputs.access_token }}
+          TAG: ${{ steps.cfg.outputs.tag }}
+        run: |
+          # First input line is the registry token (never on a command line),
+          # the rest is the deploy script run by "bash -s".
+          {
+            printf '%s\n' "$TOKEN"
+            cat <<'EOF'
+          set -euo pipefail
+          echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${REGISTRY%%/*}" > /dev/null
+          cd /opt/sentra
+          git -C src/Sentra-AI-Model fetch --quiet origin main
+          git -C src/Sentra-AI-Model checkout --quiet -B main "$DEPLOY_SHA"
+          if ! grep -q "$REGISTRY/ai-service" docker-compose.yml; then
+            # Images are pushed, but the server still builds locally until
+            # the Ansible playbook switches it to registry mode.
+            echo "::notice::Server not in registry mode yet; building on the VM this time."
+            docker compose up -d --build ai-service
+            docker image prune -f > /dev/null
+            exit 0
+          fi
+          AI_TAG=$TAG docker compose pull --quiet ai-service
+          AI_TAG=$TAG docker compose up -d --no-build ai-service
+          docker image prune -f > /dev/null
+          echo "Deployed Sentra-AI-Model $TAG"
+          EOF
+          } | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "sentra@$GCP_HOST" \
+            "read -r TOKEN && export TOKEN REGISTRY=$REGISTRY TAG=$TAG DEPLOY_SHA=$DEPLOY_SHA && bash -s"
+
+      - name: Build on the VM (no registry configured)
+        if: steps.cfg.outputs.ready == 'true' && steps.cfg.outputs.registry != 'true'
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "sentra@$GCP_HOST" \
             "DEPLOY_SHA=$DEPLOY_SHA bash -s" <<'EOF'
@@ -71,7 +164,7 @@ jobs:
           EOF
 
       - name: Smoke test
-        if: steps.secrets.outputs.ready == 'true'
+        if: steps.cfg.outputs.ready == 'true'
         run: |
           url="https://${GCP_HOST}.sslip.io"
           for _ in $(seq 1 60); do
